@@ -1246,6 +1246,26 @@ internal sealed class ProfileBackgroundPanel : Panel
     }
 }
 
+internal sealed class ProfileListBox : ListBox
+{
+    private const int WsVScroll = 0x00200000;
+
+    public bool NativeScrollBarIsHidden
+    {
+        get { return (CreateParams.Style & WsVScroll) == 0; }
+    }
+
+    protected override CreateParams CreateParams
+    {
+        get
+        {
+            CreateParams parameters = base.CreateParams;
+            parameters.Style &= ~WsVScroll;
+            return parameters;
+        }
+    }
+}
+
 internal sealed class LauncherForm : Form
 {
     private const int WmNcHitTest = 0x84;
@@ -1298,6 +1318,7 @@ internal sealed class LauncherForm : Form
     private int hoveredProfileIndex = -1;
     private int selectedProfileIndex = -1;
     private int[] lastProfileSelectionInvalidatedIndices = new int[0];
+    private int profileMouseWheelDelta;
     private Button maximizeWindowButton;
     private readonly List<Button> titleBarButtons = new List<Button>();
     private readonly bool rememberLastProfile;
@@ -1383,7 +1404,7 @@ internal sealed class LauncherForm : Form
         configurationList.MouseMove += OnProfileListMouseMove;
         configurationList.MouseLeave += OnProfileListMouseLeave;
         configurationList.MouseUp += OnProfileListMouseUp;
-        configurationList.MouseWheel += OnProfileListScrolled;
+        configurationList.MouseWheel += OnProfileListMouseWheel;
         configurationList.KeyUp += OnProfileListScrolled;
         configurationList.Resize += delegate { UpdateProfileScrollBar(); };
         profileScrollBar.ValueChanged += OnProfileScrollChanged;
@@ -1455,7 +1476,10 @@ internal sealed class LauncherForm : Form
         {
             int visibleItems = Math.Max(1, configurationList.ClientSize.Height / configurationList.ItemHeight);
             bool shouldBeVisible = ShouldShowProfileScrollBar(configurationList.Items.Count, visibleItems);
-            return profileScrollBar.Visible == shouldBeVisible &&
+            ProfileListBox profileList = configurationList as ProfileListBox;
+            return profileList != null &&
+                profileList.NativeScrollBarIsHidden &&
+                profileScrollBar.Visible == shouldBeVisible &&
                 profileScrollBar.Enabled == shouldBeVisible;
         }
     }
@@ -1550,6 +1574,7 @@ internal sealed class LauncherForm : Form
                 profileActionsMenu.ShowImageMargin &&
                 profileActionsMenu.ImageScalingSize == new Size(16, 16) &&
                 ProfileScrollBarVisibilityIsCorrect &&
+                ProfileWheelScrollingIsValid &&
                 SidebarLogoLayoutIsValid &&
                 configurationList.Right <= profileScrollBar.Left &&
                 editProfileMenuItem.ImageAlign == ContentAlignment.MiddleCenter &&
@@ -1594,6 +1619,37 @@ internal sealed class LauncherForm : Form
                 invalidatedIndices[1] == nextIndex;
             configurationList.SelectedIndex = previousIndex;
             return redrawIsScoped;
+        }
+    }
+
+    public bool ProfileWheelScrollingIsValid
+    {
+        get
+        {
+            int visibleItems = Math.Max(1, configurationList.ClientSize.Height / configurationList.ItemHeight);
+            if (configurationList.Items.Count <= visibleItems || SystemInformation.MouseWheelScrollLines == 0)
+            {
+                return true;
+            }
+
+            int initialValue = profileScrollBar.Value;
+            int initialTopIndex = configurationList.TopIndex;
+            int initialDelta = profileMouseWheelDelta;
+            profileScrollBar.Value = profileScrollBar.Minimum;
+            OnProfileListMouseWheel(
+                configurationList,
+                new MouseEventArgs(
+                    MouseButtons.None,
+                    0,
+                    0,
+                    0,
+                    -SystemInformation.MouseWheelScrollDelta));
+            bool scrolled = profileScrollBar.Value > profileScrollBar.Minimum &&
+                configurationList.TopIndex == profileScrollBar.Value;
+            profileScrollBar.Value = initialValue;
+            configurationList.TopIndex = initialTopIndex;
+            profileMouseWheelDelta = initialDelta;
+            return scrolled;
         }
     }
 
@@ -1795,7 +1851,7 @@ internal sealed class LauncherForm : Form
         }
         sidebar.Controls.Add(logo);
 
-        ListBox list = new ListBox();
+        ProfileListBox list = new ProfileListBox();
         list.Name = "ProfileList";
         list.Location = new Point(16, 366);
         list.Size = new Size(244, 340);
@@ -2144,6 +2200,40 @@ internal sealed class LauncherForm : Form
         if (IsHandleCreated && !IsDisposed)
         {
             BeginInvoke(new MethodInvoker(UpdateProfileScrollBar));
+        }
+    }
+
+    private void OnProfileListMouseWheel(object sender, MouseEventArgs e)
+    {
+        profileMouseWheelDelta += e.Delta;
+        int delta = SystemInformation.MouseWheelScrollDelta;
+        int notches = profileMouseWheelDelta / delta;
+        if (notches == 0)
+        {
+            return;
+        }
+
+        profileMouseWheelDelta -= notches * delta;
+        int scrollLines = SystemInformation.MouseWheelScrollLines;
+        if (scrollLines == 0)
+        {
+            return;
+        }
+
+        int visibleItems = Math.Max(1, configurationList.ClientSize.Height / configurationList.ItemHeight);
+        int scrollAmount = scrollLines < 0
+            ? visibleItems
+            : Math.Max(1, scrollLines) * Math.Abs(notches);
+        int maximumValue = Math.Max(
+            profileScrollBar.Minimum,
+            profileScrollBar.Maximum - profileScrollBar.LargeChange + 1);
+        int change = notches > 0 ? -scrollAmount : scrollAmount;
+        int nextValue = Math.Max(
+            profileScrollBar.Minimum,
+            Math.Min(maximumValue, profileScrollBar.Value + change));
+        if (nextValue != profileScrollBar.Value)
+        {
+            profileScrollBar.Value = nextValue;
         }
     }
 

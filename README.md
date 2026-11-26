@@ -27,7 +27,7 @@ El launcher recuerda el último perfil que seleccionaste. Puedes crear varios pa
 - Eliminar un perfil solo lo quita del launcher; no desinstala el juego ni borra tus ciudades guardadas.
 - Los perfiles guardan la configuración de inicio que les hayas asignado. No son copias de seguridad de tus ciudades.
 
-El launcher copia los fondos elegidos a su propia carpeta. Mantén juntos los archivos extraídos y no borres las carpetas `Profiles` o `Backgrounds` si quieres conservar tus perfiles e imágenes.
+El launcher copia los fondos elegidos a su propia carpeta. Mantén juntos los archivos extraídos y no borres las carpetas `Profiles` o `Backgrounds` si quieres conservar tus perfiles e imágenes. Si la lista no cabe en pantalla, aparece una sola barra de desplazamiento; también puedes desplazarte con la rueda del ratón.
 
 ## Actualizar
 
