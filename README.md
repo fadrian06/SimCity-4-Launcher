@@ -48,6 +48,10 @@ El código de salida `0` indica que la verificación pasó. Esta comprobación n
 
 `Profiles` y `Backgrounds` son datos locales y no se publican. El workflow solo recibe permiso `contents: write` para crear releases; no publica paquetes ni solicita permisos `packages`. GitHub no ofrece un ajuste o endpoint compatible para desactivar GitHub Packages por repositorio, así que esa función no se puede apagar desde esta automatización.
 
+## Landing page
+
+La web pública del proyecto es [fadrian06.github.io/SimCity-4-Launcher](https://fadrian06.github.io/SimCity-4-Launcher/). Su código está en `site`; `.github/workflows/deploy-pages.yml` la despliega con GitHub Pages al actualizar `main` y también permite ejecuciones manuales. La página consulta las releases beta públicas para ofrecer la descarga más reciente; si la consulta no está disponible, enlaza al listado de versiones. El favicon y el icono de marca usan `site/assets/SimCity4.ico`, copiado de la instalación local. El sitio solo empaqueta los archivos de `site`, no el código, los perfiles ni los fondos locales.
+
 ## Mantenimiento
 
 Al finalizar cada tarea, actualiza este `README.md` y `AGENTS.md` para reflejar el estado, los cambios y la verificación. Mantén esta instrucción vigente en ambos documentos.
@@ -79,4 +83,5 @@ Al finalizar cada tarea, actualiza este `README.md` y `AGENTS.md` para reflejar 
 - Se copió el banner `Gemini_Generated_Image_b604web604web604.jpg` a `Images` y se incrustó al principio de este README; el ZIP de releases también lo incluye porque empaqueta esa carpeta. La descripción del repositorio en GitHub se cambió al español y se conservaron sus siete topics.
 - `Profiles` y `Backgrounds` se eliminaron de todos los commits de `main` y de los ZIP de release; las carpetas locales se preservaron. Se retiraron las releases y tags beta1 y beta2 que apuntaban al historial anterior.
 - El launcher ahora inicia sin perfiles y permite crear el primero al seleccionar `SimCity 4.exe`; `--verify` valida el estado vacío.
-- La beta pública [`v0.1.0-beta.3`](https://github.com/fadrian06/SimCity-4-Launcher/releases/tag/v0.1.0-beta.3) pasó la verificación: el ZIP contiene el ejecutable y el banner, sin rutas de perfiles o fondos.
+- Las betas públicas [`v0.1.0-beta.3`](https://github.com/fadrian06/SimCity-4-Launcher/releases/tag/v0.1.0-beta.3) y [`v0.1.0-beta.4`](https://github.com/fadrian06/SimCity-4-Launcher/releases/tag/v0.1.0-beta.4) están publicadas como releases con su ZIP descargable; los paquetes excluyen las carpetas locales de perfiles y fondos.
+- En esta tarea se creó una landing en español con diseño adaptable, banner, guía de instalación, información de privacidad y descarga dinámica de la beta más reciente. El favicon y el icono de marca usan `SimCity4.ico`. GitHub Pages despliega `site/` mediante Actions; la URL pública también se configura como webpage del repositorio.

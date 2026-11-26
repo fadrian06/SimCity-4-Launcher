@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#10101b">
+  <meta name="description" content="Organiza tus perfiles y vuelve a tus ciudades de SimCity 4 con un launcher de escritorio para Windows.">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="SimCity 4 Launcher — Tus ciudades, a un clic">
+  <meta property="og:description" content="Un launcher de escritorio para organizar e iniciar tus perfiles de SimCity 4.">
+  <meta property="og:image" content="https://fadrian06.github.io/SimCity-4-Launcher/assets/banner.jpg">
+  <title>SimCity 4 Launcher — Tus ciudades, a un clic</title>
+  <link rel="icon" href="assets/SimCity4.ico" type="image/x-icon">
+  <link rel="stylesheet" href="styles.css">
+  <script src="releases.js" defer></script>
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="#inicio" aria-label="SimCity 4 Launcher, inicio">
+      <img src="assets/SimCity4.ico" width="38" height="38" alt="">
+      <span>SimCity 4 <strong>Launcher</strong></span>
+    </a>
+    <nav aria-label="Navegación principal">
+      <a href="#caracteristicas">Características</a>
+      <a href="#como-empezar">Cómo empezar</a>
+      <a class="nav-github" href="https://github.com/fadrian06/SimCity-4-Launcher" target="_blank" rel="noreferrer">GitHub <span aria-hidden="true">↗</span></a>
+    </nav>
+  </header>
+
+  <main id="inicio">
+    <section class="hero page-width" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <p class="eyebrow"><span class="status-dot" aria-hidden="true"></span> HECHO PARA VOLVER A TU CIUDAD</p>
+        <h1 id="hero-title">Tus ciudades,<br><span>a un clic.</span></h1>
+        <p class="hero-description">Un launcher de escritorio para organizar tus perfiles de SimCity 4 y arrancar la ciudad que te apetece jugar.</p>
+        <div class="hero-actions">
+          <a class="button button-primary" id="download-button" href="https://github.com/fadrian06/SimCity-4-Launcher/releases" target="_blank" rel="noreferrer">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3v11m0 0 4-4m-4 4-4-4M5 17v3h14v-3"/></svg>
+            <span>Ver versiones beta</span>
+          </a>
+          <a class="button button-secondary" href="https://github.com/fadrian06/SimCity-4-Launcher" target="_blank" rel="noreferrer">Explorar el proyecto <span aria-hidden="true">↗</span></a>
+        </div>
+        <p class="release-note" id="release-status" aria-live="polite">Versión beta para Windows · El juego no está incluido</p>
+      </div>
+      <div class="hero-art">
+        <div class="art-glow" aria-hidden="true"></div>
+        <img src="assets/banner.jpg" alt="Banner de SimCity 4 Launcher con una ciudad y la interfaz del launcher" width="1792" height="592">
+        <div class="art-caption"><span class="caption-mark" aria-hidden="true">SC4</span><span>Tu próxima ciudad te espera</span></div>
+      </div>
+    </section>
+
+    <section class="features page-width" id="caracteristicas" aria-labelledby="features-title">
+      <div class="section-heading">
+        <p class="eyebrow">MENOS CLICS, MÁS CIUDAD</p>
+        <h2 id="features-title">Todo listo para volver a jugar.</h2>
+        <p>Un punto de entrada sencillo para tus distintas partidas, sin tocar cómo tienes instalado SimCity 4.</p>
+      </div>
+      <div class="feature-grid">
+        <article class="feature-card">
+          <div class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H10l2 2h6.5A1.5 1.5 0 0 1 20 7.5v11a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5z"/><path d="M4.5 9h15"/></svg></div>
+          <h3>Perfiles a tu manera</h3>
+          <p>Guarda varias formas de iniciar el juego y elige entre ellas desde una lista clara. Crea, edita y organiza perfiles cuando quieras.</p>
+        </article>
+        <article class="feature-card">
+          <div class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><circle cx="8.5" cy="9" r="1.5"/><path d="m5 17 4.5-4.5 3 3L15 13l4 4"/></svg></div>
+          <h3>Un toque personal</h3>
+          <p>Añade una imagen de fondo a cada perfil para distinguir tus ciudades y hacer tuyo el launcher.</p>
+        </article>
+        <article class="feature-card">
+          <div class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3.5 5.5 6v5.5c0 4.2 2.7 7.4 6.5 9 3.8-1.6 6.5-4.8 6.5-9V6z"/><rect x="9" y="10.5" width="6" height="5" rx="1"/><path d="M10.5 10.5V9a1.5 1.5 0 0 1 3 0v1.5"/></svg></div>
+          <h3>Tu instalación, tus datos</h3>
+          <p>Los perfiles y fondos se guardan localmente en tu equipo. El launcher no incluye el juego ni necesita subir tus partidas.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="getting-started page-width" id="como-empezar" aria-labelledby="start-title">
+      <div class="start-copy">
+        <p class="eyebrow">EN UN MOMENTO</p>
+        <h2 id="start-title">De la descarga a tu ciudad.</h2>
+        <p>Necesitas Windows y una copia de SimCity 4 instalada. El juego no se distribuye con el launcher.</p>
+        <a class="text-link" href="https://github.com/fadrian06/SimCity-4-Launcher#inicio" target="_blank" rel="noreferrer">Consulta las instrucciones completas <span aria-hidden="true">→</span></a>
+      </div>
+      <ol class="steps">
+        <li><span class="step-number">01</span><span><strong>Descarga y extrae</strong><small>Abre el ZIP de la versión beta y extrae su contenido.</small></span></li>
+        <li><span class="step-number">02</span><span><strong>Abre el launcher</strong><small>Ejecuta SimCity 4 Launcher.exe desde la carpeta extraída.</small></span></li>
+        <li><span class="step-number">03</span><span><strong>Crea tu perfil</strong><small>Selecciona SimCity 4.exe y pulsa Jugar.</small></span></li>
+      </ol>
+    </section>
+
+    <section class="closing page-width" aria-label="Acceso al proyecto">
+      <div><p class="eyebrow">LISTO CUANDO TÚ LO ESTÉS</p><h2>Vuelve a construir.</h2></div>
+      <a class="button button-primary" href="https://github.com/fadrian06/SimCity-4-Launcher/releases" id="closing-download">Ver versiones beta <span aria-hidden="true">↗</span></a>
+    </section>
+  </main>
+
+  <footer class="site-footer page-width">
+    <a class="brand footer-brand" href="#inicio"><img src="assets/SimCity4.ico" width="30" height="30" alt=""><span>SimCity 4 <strong>Launcher</strong></span></a>
+    <p>Un proyecto de fans, no afiliado a Electronic Arts. SimCity 4 es propiedad de sus respectivos titulares.</p>
+    <a href="https://github.com/fadrian06/SimCity-4-Launcher" target="_blank" rel="noreferrer">Código y novedades en GitHub ↗</a>
+  </footer>
+</body>
+</html>
