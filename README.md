@@ -1,5 +1,7 @@
 # SimCity 4 Launcher
 
+![Banner de SimCity 4 Launcher](Images/Gemini_Generated_Image_b604web604web604.jpg)
+
 Aplicación de escritorio WinForms para seleccionar e iniciar perfiles de SimCity 4. El launcher conserva los accesos directos existentes y ofrece una interfaz propia con lista de perfiles, fondos personalizados y acciones para crear, editar o eliminar perfiles.
 
 El código fuente se mantiene separado del programa compilado en `Source\SimCity 4 Launcher.cs`. El ejecutable permanece en la carpeta principal para que el acceso directo y las rutas de recursos no cambien.
@@ -10,9 +12,9 @@ Abre `SimCity 4 Launcher.lnk` en el Escritorio. El acceso directo inicia `C:\Sim
 
 ## Perfiles e imágenes
 
-- Cada perfil corresponde a un acceso directo `Profiles\SC4 (nombre).lnk`. Los argumentos, destino, directorio de trabajo e icono se mantienen en ese acceso directo.
+- Cada perfil corresponde a un acceso directo local `Profiles\SC4 (nombre).lnk`, donde se conservan los argumentos, el destino, el directorio de trabajo y el icono. Esta carpeta no se sube a GitHub ni se incluye en las releases. Si no hay perfiles, pulsa `Nuevo perfil` y selecciona `SimCity 4.exe` para crear el primero.
 - El último perfil seleccionado se guarda en `%LOCALAPPDATA%\SimCity 4 Launcher\last-profile.txt`.
-- Los fondos elegidos desde el editor se copian a `Backgrounds`. Se admiten PNG, JPEG, BMP, GIF, TIFF y WebP; las rutas se guardan en `%LOCALAPPDATA%\SimCity 4 Launcher\profile-backgrounds.txt` y las referencias antiguas se actualizan automáticamente al cargar.
+- Los fondos elegidos desde el editor se copian a `Backgrounds`, una carpeta local excluida de GitHub y de las releases. Se admiten PNG, JPEG, BMP, GIF, TIFF y WebP; las rutas se guardan en `%LOCALAPPDATA%\SimCity 4 Launcher\profile-backgrounds.txt` y las referencias antiguas se actualizan automáticamente al cargar.
 - Las imágenes WebP se decodifican con `Imazen.WebP` y el runtime nativo agrupados en `Libraries`.
 
 ## Recursos visuales
@@ -22,7 +24,7 @@ Abre `SimCity 4 Launcher.lnk` en el Escritorio. El acceso directo inicia `C:\Sim
 - `C:\Games\SimCity 4\SimCity4.ico` se incrusta directamente en `SimCity 4 Launcher.exe` durante la compilación; el acceso directo del Escritorio conserva ese mismo icono.
 - Las bibliotecas WebP y sus avisos están en `Libraries`.
 - El logo del sidebar es `Images\vltqk99kevp81.png`.
-- Los fondos de perfil residen en `Backgrounds` y los accesos directos de perfil en `Profiles`.
+- El banner del proyecto que se muestra al inicio de este README es `Images\Gemini_Generated_Image_b604web604web604.jpg`.
 
 ## Compilar y verificar
 
@@ -42,9 +44,9 @@ El código de salida `0` indica que la verificación pasó. Esta comprobación n
 
 ## Releases beta automáticas
 
-`.github/workflows/beta-release.yml` compila en Windows y publica una GitHub prerelease secuencial `v0.1.0-beta.N` por cada push a una rama. El ZIP contiene el ejecutable compilado, recursos, perfiles y este README. El build remoto no incrusta el icono instalado localmente en `C:\Games\SimCity 4\SimCity4.ico`; el código fuente del repositorio y las instrucciones de compilación siguen disponibles.
+`.github/workflows/beta-release.yml` compila en Windows y publica una GitHub prerelease secuencial `v0.1.0-beta.N` por cada push a una rama. El ZIP contiene el ejecutable, `Fonts`, `Icons`, `Images`, `Libraries` y este README; excluye los perfiles y fondos locales. Extrae el ZIP en una carpeta escribible, inicia el ejecutable y crea un perfil seleccionando `SimCity 4.exe`. El build remoto no incrusta el icono instalado localmente en `C:\Games\SimCity 4\SimCity4.ico`; el código fuente del repositorio y las instrucciones de compilación siguen disponibles.
 
-Los accesos directos de `Profiles` apuntan a rutas de instalación locales de SimCity 4 y pueden requerir ajustes antes de jugar. El workflow solo recibe permiso `contents: write` para crear releases; no publica paquetes ni solicita permisos `packages`. GitHub no ofrece un ajuste o endpoint compatible para desactivar GitHub Packages por repositorio, así que esa función no se puede apagar desde esta automatización.
+`Profiles` y `Backgrounds` son datos locales y no se publican. El workflow solo recibe permiso `contents: write` para crear releases; no publica paquetes ni solicita permisos `packages`. GitHub no ofrece un ajuste o endpoint compatible para desactivar GitHub Packages por repositorio, así que esa función no se puede apagar desde esta automatización.
 
 ## Mantenimiento
 
@@ -74,3 +76,6 @@ Al finalizar cada tarea, actualiza este `README.md` y `AGENTS.md` para reflejar 
 - Se inicializó un repositorio Git en `C:\SimCity 4 Launcher`. `.gitignore` excluye el ejecutable generado por la compilación; el código fuente, perfiles y recursos permanecen versionables. No se creó ningún commit.
 - El repositorio público está en [GitHub](https://github.com/fadrian06/SimCity-4-Launcher). Los accesos directos de `Profiles` conservan rutas específicas del equipo original y pueden requerir cambios al clonar; el ejecutable generado sigue excluido de Git.
 - En esta tarea, se añadió un workflow de release beta por push a cada rama, con un ZIP compilado y permiso de Actions limitado a `contents: write`. Se actualizaron la descripción y los topics del repositorio. GitHub no proporciona un control compatible para desactivar Packages por repositorio.
+- Se copió el banner `Gemini_Generated_Image_b604web604web604.jpg` a `Images` y se incrustó al principio de este README; el ZIP de releases también lo incluye porque empaqueta esa carpeta. La descripción del repositorio en GitHub se cambió al español y se conservaron sus siete topics.
+- `Profiles` y `Backgrounds` se excluyeron de Git y de los ZIP de release, preservando las carpetas locales. La release beta inicial que las empaquetó y su tag se retiraron; los commits públicos anteriores aún conservan esos archivos en su historial.
+- El launcher ahora inicia sin perfiles y permite crear el primero al seleccionar `SimCity 4.exe`; `--verify` valida el estado vacío.

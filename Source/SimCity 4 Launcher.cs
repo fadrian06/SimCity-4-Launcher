@@ -131,6 +131,11 @@ internal static class Program
         Directory.CreateDirectory(directory);
         string[] files = Directory.GetFiles(directory, "*.lnk");
         List<LauncherConfiguration> configurations = new List<LauncherConfiguration>();
+        if (files.Length == 0)
+        {
+            return configurations;
+        }
+
         Type shellType = Type.GetTypeFromProgID("WScript.Shell");
 
         if (shellType == null)
@@ -186,12 +191,6 @@ internal static class Program
             return string.Compare(first.Name, second.Name, StringComparison.CurrentCultureIgnoreCase);
         });
 
-        if (configurations.Count == 0)
-        {
-            throw new InvalidOperationException(
-                "No se encontraron accesos directos SC4 (nombre) en la carpeta Profiles.");
-        }
-
         return configurations;
     }
 
@@ -216,9 +215,26 @@ internal static class Program
 
     private static int VerifyConfigurations(List<LauncherConfiguration> configurations)
     {
+        try
+        {
+            using (LauncherForm emptyProfileForm = new LauncherForm(
+                new List<LauncherConfiguration>(),
+                false))
+            {
+                if (!emptyProfileForm.EmptyProfileStateIsValid)
+                {
+                    return 12;
+                }
+            }
+        }
+        catch
+        {
+            return 12;
+        }
+
         if (configurations.Count == 0)
         {
-            return 2;
+            return 0;
         }
 
         foreach (LauncherConfiguration configuration in configurations)
@@ -778,6 +794,9 @@ internal sealed class LauncherForm : Form
         deleteProfileMenuItem.Click += OnDeleteProfileClicked;
         profileActionsMenu.Items.Add(editProfileMenuItem);
         profileActionsMenu.Items.Add(deleteProfileMenuItem);
+        launchButton.Enabled = configurations.Count > 0;
+        editProfileMenuItem.Enabled = configurations.Count > 0;
+        deleteProfileMenuItem.Enabled = configurations.Count > 1;
 
         foreach (LauncherConfiguration configuration in configurations)
         {
@@ -834,6 +853,20 @@ internal sealed class LauncherForm : Form
     public string SelectedConfigurationName
     {
         get { return configurationList.SelectedItem as string; }
+    }
+
+    public bool EmptyProfileStateIsValid
+    {
+        get
+        {
+            return configurations.Count == 0 &&
+                configurationList.Items.Count == 0 &&
+                configurationList.SelectedIndex == -1 &&
+                addProfileButton.Enabled &&
+                !launchButton.Enabled &&
+                !editProfileMenuItem.Enabled &&
+                !deleteProfileMenuItem.Enabled;
+        }
     }
 
     public bool TitleBarButtonsAreValid
@@ -1530,12 +1563,40 @@ internal sealed class LauncherForm : Form
     private void OnAddProfileClicked(object sender, EventArgs e)
     {
         int index = configurationList.SelectedIndex;
-        if (index < 0 || index >= configurations.Count)
+        LauncherConfiguration template;
+        if (configurations.Count == 0)
         {
-            return;
+            using (OpenFileDialog dialog = new OpenFileDialog())
+            {
+                dialog.Title = "Selecciona el ejecutable de SimCity 4";
+                dialog.Filter = "SimCity 4 (SimCity 4.exe)|SimCity 4.exe|Archivos ejecutables (*.exe)|*.exe";
+                dialog.CheckFileExists = true;
+                dialog.Multiselect = false;
+                if (dialog.ShowDialog(this) != DialogResult.OK)
+                {
+                    return;
+                }
+
+                template = new LauncherConfiguration
+                {
+                    Target = dialog.FileName,
+                    WorkingDirectory = Path.GetDirectoryName(dialog.FileName),
+                    IconLocation = dialog.FileName,
+                    Arguments = string.Empty,
+                    BackgroundPath = string.Empty
+                };
+            }
+        }
+        else
+        {
+            if (index < 0 || index >= configurations.Count)
+            {
+                return;
+            }
+
+            template = configurations[index];
         }
 
-        LauncherConfiguration template = configurations[index];
         string profileName = "Nuevo perfil";
         string arguments = template.Arguments ?? string.Empty;
         string backgroundPath = template.BackgroundPath ?? string.Empty;
