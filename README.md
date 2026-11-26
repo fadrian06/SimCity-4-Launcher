@@ -40,6 +40,12 @@ El script cierra las instancias del launcher, compila desde `Source\SimCity 4 La
 
 El código de salida `0` indica que la verificación pasó. Esta comprobación no inicia el juego ni guarda la preferencia del último perfil.
 
+## Releases beta automáticas
+
+`.github/workflows/beta-release.yml` compila en Windows y publica una GitHub prerelease secuencial `v0.1.0-beta.N` por cada push a una rama. El ZIP contiene el ejecutable compilado, recursos, perfiles y este README. El build remoto no incrusta el icono instalado localmente en `C:\Games\SimCity 4\SimCity4.ico`; el código fuente del repositorio y las instrucciones de compilación siguen disponibles.
+
+Los accesos directos de `Profiles` apuntan a rutas de instalación locales de SimCity 4 y pueden requerir ajustes antes de jugar. El workflow solo recibe permiso `contents: write` para crear releases; no publica paquetes ni solicita permisos `packages`. GitHub no ofrece un ajuste o endpoint compatible para desactivar GitHub Packages por repositorio, así que esa función no se puede apagar desde esta automatización.
+
 ## Mantenimiento
 
 Al finalizar cada tarea, actualiza este `README.md` y `AGENTS.md` para reflejar el estado, los cambios y la verificación. Mantén esta instrucción vigente en ambos documentos.
@@ -67,3 +73,4 @@ Al finalizar cada tarea, actualiza este `README.md` y `AGENTS.md` para reflejar 
 - En esta tarea, el cambio de selección dejó de repintar la lista completa al abrir el dropdown y ahora solo invalida las filas afectadas. Los botones del editor centran icono y texto y mantienen huecos de 8 px; `--verify` comprobó la regresión y el layout, terminó con código 0 y el launcher quedó abierto.
 - Se inicializó un repositorio Git en `C:\SimCity 4 Launcher`. `.gitignore` excluye el ejecutable generado por la compilación; el código fuente, perfiles y recursos permanecen versionables. No se creó ningún commit.
 - El repositorio público está en [GitHub](https://github.com/fadrian06/SimCity-4-Launcher). Los accesos directos de `Profiles` conservan rutas específicas del equipo original y pueden requerir cambios al clonar; el ejecutable generado sigue excluido de Git.
+- En esta tarea, se añadió un workflow de release beta por push a cada rama, con un ZIP compilado y permiso de Actions limitado a `contents: write`. Se actualizaron la descripción y los topics del repositorio. GitHub no proporciona un control compatible para desactivar Packages por repositorio.
