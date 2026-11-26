@@ -29,17 +29,27 @@ jobs:
           $packageDirectory = Join-Path $outputDirectory 'package'
           $outputPath = Join-Path $packageDirectory 'SimCity 4 Launcher.exe'
           $archivePath = Join-Path $outputDirectory 'SimCity-4-Launcher-beta.zip'
+          $checksumPath = Join-Path $outputDirectory 'SimCity-4-Launcher-beta.zip.sha256'
+          $assemblyVersion = "0.1.0.$env:GITHUB_RUN_NUMBER"
+          $versionSourcePath = Join-Path $outputDirectory 'LauncherVersion.cs'
+          New-Item -ItemType Directory -Path $outputDirectory -Force | Out-Null
+          $versionAttribute = '[assembly: System.Reflection.AssemblyVersion("' + $assemblyVersion + '")]'
+          [IO.File]::WriteAllText($versionSourcePath, $versionAttribute)
           New-Item -ItemType Directory -Path $packageDirectory -Force | Out-Null
 
           $arguments = @(
               '/nologo',
               '/target:winexe',
               "/out:$outputPath",
+              ("/win32icon:" + (Join-Path $workspace 'site\assets\SimCity4.ico')),
               '/reference:System.Windows.Forms.dll',
               '/reference:System.Drawing.dll',
               '/reference:System.Core.dll',
+              '/reference:System.IO.Compression.dll',
+              '/reference:System.Web.Extensions.dll',
               ("/reference:" + (Join-Path $workspace 'Libraries\Imazen.WebP.dll')),
-              (Join-Path $workspace 'Source\SimCity 4 Launcher.cs')
+              (Join-Path $workspace 'Source\SimCity 4 Launcher.cs'),
+              $versionSourcePath
           )
           & $compilerPath @arguments
           if ($LASTEXITCODE -ne 0) {
@@ -51,6 +61,8 @@ jobs:
           }
           Copy-Item -LiteralPath (Join-Path $workspace 'README.md') -Destination $packageDirectory
           Compress-Archive -Path (Join-Path $packageDirectory '*') -DestinationPath $archivePath -Force
+          $checksum = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
+          Set-Content -LiteralPath $checksumPath -Value $checksum -Encoding ascii -NoNewline
 
       - name: Publish beta prerelease
         shell: pwsh
@@ -59,8 +71,9 @@ jobs:
         run: |
           $tag = "v0.1.0-beta.$env:GITHUB_RUN_NUMBER"
           $archivePath = Join-Path $env:RUNNER_TEMP 'SimCity 4 Launcher release\SimCity-4-Launcher-beta.zip'
-          $notes = "Automated beta built from commit $env:GITHUB_SHA.`n`nExtract the ZIP, launch the application, and use Nuevo perfil to select your SimCity 4 executable and create a local profile."
-          gh release create $tag $archivePath --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "SimCity 4 Launcher $tag" --prerelease --notes $notes
+          $checksumPath = Join-Path $env:RUNNER_TEMP 'SimCity 4 Launcher release\SimCity-4-Launcher-beta.zip.sha256'
+          $notes = "Versión beta compilada desde el commit $env:GITHUB_SHA.`n`nDescarga y extrae el ZIP. Al iniciar, el launcher comprueba si hay una versión más reciente y conserva tus perfiles y fondos al actualizar."
+          gh release create $tag $archivePath $checksumPath --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "SimCity 4 Launcher $tag" --prerelease --notes $notes
           if ($LASTEXITCODE -ne 0) {
               throw 'Could not publish the beta prerelease.'
           }

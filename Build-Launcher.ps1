@@ -2,8 +2,10 @@ $ErrorActionPreference = 'Stop'
 
 $projectDirectory = $PSScriptRoot
 $sourcePath = Join-Path $projectDirectory 'Source\SimCity 4 Launcher.cs'
+$versionSourcePath = Join-Path $projectDirectory 'obj\LauncherVersion.cs'
+$buildDirectory = Split-Path -Parent $versionSourcePath
 $outputPath = Join-Path $projectDirectory 'SimCity 4 Launcher.exe'
-$iconPath = 'C:\Games\SimCity 4\SimCity4.ico'
+$iconPath = Join-Path $projectDirectory 'site\assets\SimCity4.ico'
 $compilerPath = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 
 if (-not (Test-Path -LiteralPath $compilerPath)) {
@@ -52,6 +54,11 @@ foreach ($launcherProcess in $launcherProcesses) {
 }
 
 try {
+    New-Item -ItemType Directory -Path $buildDirectory -Force | Out-Null
+    [IO.File]::WriteAllText(
+        $versionSourcePath,
+        '[assembly: System.Reflection.AssemblyVersion("0.1.0.65534")]')
+
     & $compilerPath `
         '/nologo' `
         '/target:winexe' `
@@ -60,7 +67,10 @@ try {
         '/reference:System.Windows.Forms.dll' `
         '/reference:System.Drawing.dll' `
         '/reference:System.Core.dll' `
+        '/reference:System.IO.Compression.dll' `
+        '/reference:System.Web.Extensions.dll' `
         ("/reference:" + (Join-Path $projectDirectory 'Libraries\Imazen.WebP.dll')) `
+        $versionSourcePath `
         $sourcePath
 
     if ($LASTEXITCODE -ne 0) {
@@ -78,6 +88,14 @@ try {
     Write-Host "Compilación completada y acceso directo actualizado: $shortcutPath"
 }
 finally {
+    if (Test-Path -LiteralPath $versionSourcePath) {
+        Remove-Item -LiteralPath $versionSourcePath -Force
+    }
+    if ((Test-Path -LiteralPath $buildDirectory) -and
+        @(Get-ChildItem -LiteralPath $buildDirectory -Force).Count -eq 0) {
+        Remove-Item -LiteralPath $buildDirectory -Force
+    }
+
     if (Test-Path -LiteralPath $outputPath) {
         Start-Process -FilePath $outputPath -WorkingDirectory $projectDirectory
         Write-Host 'Launcher iniciado.'

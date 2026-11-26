@@ -1,15 +1,21 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Drawing.Text;
 using System.IO;
+using System.IO.Compression;
+using System.Net;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Windows.Forms;
+using System.Web.Script.Serialization;
 using Imazen.WebP;
 
 internal sealed class LauncherConfiguration
@@ -53,6 +59,567 @@ internal static class LauncherPaths
     public static string ImagesDirectory
     {
         get { return Path.Combine(Application.StartupPath, "Images"); }
+    }
+}
+
+internal sealed class LauncherUpdate
+{
+    public string TagName { get; set; }
+    public Version Version { get; set; }
+    public string DownloadUrl { get; set; }
+    public string ChecksumUrl { get; set; }
+    public string Digest { get; set; }
+    public long Size { get; set; }
+}
+
+internal sealed class LauncherUpdatePackage
+{
+    public string UpdateDirectory { get; set; }
+    public string PackageDirectory { get; set; }
+    public string InstallerScriptPath { get; set; }
+    public string InstallDirectory { get; set; }
+    public string ExecutablePath { get; set; }
+}
+
+internal static class LauncherUpdater
+{
+    private const string ReleasesEndpoint =
+        "https://api.github.com/repos/fadrian06/SimCity-4-Launcher/releases?per_page=100&page=1";
+    private const string PackageName = "SimCity-4-Launcher-beta.zip";
+    private const string ChecksumName = PackageName + ".sha256";
+    private const long MaximumArchiveSize = 200L * 1024L * 1024L;
+    private const long MaximumExpandedSize = 500L * 1024L * 1024L;
+    private static readonly Regex BetaTag = new Regex(
+        @"^v(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)-beta\.(?<build>\d+)$",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex Sha256Pattern = new Regex(
+        @"\b[0-9a-f]{64}\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private const string InstallerScript = @"param(
+    [int]$ProcessId,
+    [string]$SourceDirectory,
+    [string]$InstallDirectory,
+    [string]$ExecutablePath,
+    [string]$UpdateDirectory
+)
+$ErrorActionPreference = 'Stop'
+try {
+    Wait-Process -Id $ProcessId -ErrorAction SilentlyContinue
+    $items = @(Get-ChildItem -LiteralPath $SourceDirectory -Force | Where-Object {
+        $_.Name -ne 'Profiles' -and $_.Name -ne 'Backgrounds' -and $_.Name -ne 'SimCity 4 Launcher.exe'
+    })
+    foreach ($item in $items) {
+        $destination = Join-Path $InstallDirectory $item.Name
+        if ($item.PSIsContainer) {
+            New-Item -ItemType Directory -Path $destination -Force | Out-Null
+            Copy-Item -Path (Join-Path $item.FullName '*') -Destination $destination -Recurse -Force
+        } else {
+            Copy-Item -LiteralPath $item.FullName -Destination $destination -Force
+        }
+    }
+    Copy-Item -LiteralPath (Join-Path $SourceDirectory 'SimCity 4 Launcher.exe') -Destination $ExecutablePath -Force
+    Start-Process -FilePath $ExecutablePath -WorkingDirectory $InstallDirectory
+} catch {
+    Add-Type -AssemblyName System.Windows.Forms
+    [System.Windows.Forms.MessageBox]::Show(
+        ""No se pudo completar la actualización: $($_.Exception.Message)"",
+        'SimCity 4 Launcher',
+        [System.Windows.Forms.MessageBoxButtons]::OK,
+        [System.Windows.Forms.MessageBoxIcon]::Error
+    ) | Out-Null
+    if (Test-Path -LiteralPath $ExecutablePath) {
+        Start-Process -FilePath $ExecutablePath -WorkingDirectory $InstallDirectory
+    }
+} finally {
+    Start-Sleep -Seconds 2
+    Remove-Item -LiteralPath $UpdateDirectory -Recurse -Force -ErrorAction SilentlyContinue
+}";
+
+    public static Version CurrentVersion
+    {
+        get { return Assembly.GetExecutingAssembly().GetName().Version ?? new Version(0, 0, 0, 0); }
+    }
+
+    public static bool VersionComparisonRulesAreValid
+    {
+        get
+        {
+            Version current = new Version(0, 1, 0, 12);
+            return IsNewerVersion("v0.1.0-beta.13", current) &&
+                !IsNewerVersion("v0.1.0-beta.12", current) &&
+                !IsNewerVersion("v0.1.0-beta.11", current) &&
+                !IsNewerVersion("v0.1.0", current);
+        }
+    }
+
+    public static bool IsNewerVersion(string tagName, Version currentVersion)
+    {
+        Version releaseVersion;
+        return TryParseBetaVersion(tagName, out releaseVersion) &&
+            releaseVersion.CompareTo(currentVersion ?? new Version(0, 0, 0, 0)) > 0;
+    }
+
+    public static string FormatVersion(Version version)
+    {
+        if (version == null)
+        {
+            return "desconocida";
+        }
+
+        return version.Revision > 0
+            ? version.Major + "." + version.Minor + "." + version.Build + "-beta." + version.Revision
+            : version.Major + "." + version.Minor + "." + Math.Max(0, version.Build) + " (desarrollo)";
+    }
+
+    public static bool ShouldCheckForUpdates
+    {
+        get
+        {
+            string path = GetCheckTimestampPath();
+            if (string.IsNullOrEmpty(path) || !File.Exists(path))
+            {
+                return true;
+            }
+
+            DateTime lastCheck;
+            if (!DateTime.TryParse(
+                File.ReadAllText(path),
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal,
+                out lastCheck))
+            {
+                return true;
+            }
+
+            return DateTime.UtcNow - lastCheck >= TimeSpan.FromHours(24);
+        }
+    }
+
+    public static void RecordUpdateCheck()
+    {
+        string path = GetCheckTimestampPath();
+        if (string.IsNullOrEmpty(path))
+        {
+            return;
+        }
+
+        Directory.CreateDirectory(Path.GetDirectoryName(path));
+        File.WriteAllText(
+            path,
+            DateTime.UtcNow.ToString("o", System.Globalization.CultureInfo.InvariantCulture),
+            Encoding.UTF8);
+    }
+
+    public static LauncherUpdate FindLatestRelease()
+    {
+        using (UpdateWebClient client = CreateWebClient())
+        {
+            string json = client.DownloadString(ReleasesEndpoint);
+            JavaScriptSerializer serializer = new JavaScriptSerializer();
+            serializer.MaxJsonLength = 4 * 1024 * 1024;
+            IList releases = serializer.DeserializeObject(json) as IList;
+            if (releases == null)
+            {
+                throw new InvalidDataException("GitHub devolvió una lista de versiones no válida.");
+            }
+
+            LauncherUpdate latest = null;
+            foreach (object releaseValue in releases)
+            {
+                IDictionary<string, object> release = releaseValue as IDictionary<string, object>;
+                if (release == null || ReadBoolean(release, "draft"))
+                {
+                    continue;
+                }
+
+                string tagName = ReadString(release, "tag_name");
+                Version releaseVersion;
+                if (!TryParseBetaVersion(tagName, out releaseVersion) ||
+                    (latest != null && releaseVersion <= latest.Version))
+                {
+                    continue;
+                }
+
+                IList assets = ReadValue(release, "assets") as IList;
+                if (assets == null)
+                {
+                    continue;
+                }
+
+                LauncherUpdate candidate = null;
+                string checksumUrl = null;
+                foreach (object assetValue in assets)
+                {
+                    IDictionary<string, object> asset = assetValue as IDictionary<string, object>;
+                    if (asset == null)
+                    {
+                        continue;
+                    }
+
+                    string assetName = ReadString(asset, "name");
+                    string assetUrl = ReadString(asset, "browser_download_url");
+                    if (string.Equals(assetName, PackageName, StringComparison.OrdinalIgnoreCase) &&
+                        IsTrustedDownloadUrl(assetUrl))
+                    {
+                        long size = 0;
+                        long.TryParse(ReadString(asset, "size"), out size);
+                        candidate = new LauncherUpdate
+                        {
+                            TagName = tagName,
+                            Version = releaseVersion,
+                            DownloadUrl = assetUrl,
+                            Digest = ReadString(asset, "digest"),
+                            Size = size
+                        };
+                    }
+                    else if (string.Equals(assetName, ChecksumName, StringComparison.OrdinalIgnoreCase) &&
+                        IsTrustedDownloadUrl(assetUrl))
+                    {
+                        checksumUrl = assetUrl;
+                    }
+                }
+
+                if (candidate != null)
+                {
+                    candidate.ChecksumUrl = checksumUrl;
+                    latest = candidate;
+                }
+            }
+
+            return latest;
+        }
+    }
+
+    public static LauncherUpdatePackage DownloadAndPrepare(LauncherUpdate update)
+    {
+        if (update == null || !IsTrustedDownloadUrl(update.DownloadUrl))
+        {
+            throw new InvalidDataException("La versión no incluye una descarga segura.");
+        }
+
+        if (update.Size > MaximumArchiveSize)
+        {
+            throw new InvalidDataException("El paquete de actualización supera el tamaño permitido.");
+        }
+
+        string updateDirectory = Path.Combine(
+            Path.GetTempPath(),
+            "SimCity 4 Launcher Update",
+            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(updateDirectory);
+        try
+        {
+            string archivePath = Path.Combine(updateDirectory, PackageName);
+            using (UpdateWebClient client = CreateWebClient())
+            {
+                client.DownloadFile(update.DownloadUrl, archivePath);
+            }
+
+            FileInfo archiveInfo = new FileInfo(archivePath);
+            if (archiveInfo.Length > MaximumArchiveSize ||
+                (update.Size > 0 && archiveInfo.Length != update.Size))
+            {
+                throw new InvalidDataException("El paquete descargado tiene un tamaño inesperado.");
+            }
+
+            string expectedHash = GetExpectedSha256(update);
+            string actualHash;
+            using (SHA256 algorithm = SHA256.Create())
+            using (FileStream stream = File.OpenRead(archivePath))
+            {
+                actualHash = BitConverter.ToString(algorithm.ComputeHash(stream)).Replace("-", string.Empty);
+            }
+
+            if (!string.Equals(actualHash, expectedHash, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidDataException("La comprobación de integridad del paquete no coincide.");
+            }
+
+            string packageDirectory = Path.Combine(updateDirectory, "package");
+            Directory.CreateDirectory(packageDirectory);
+            ExtractValidatedArchive(archivePath, packageDirectory);
+            if (!File.Exists(Path.Combine(packageDirectory, "SimCity 4 Launcher.exe")) ||
+                !File.Exists(Path.Combine(packageDirectory, "Libraries", "Imazen.WebP.dll")))
+            {
+                throw new InvalidDataException("El paquete no contiene los archivos necesarios del launcher.");
+            }
+
+            string executablePath = Path.Combine(Application.StartupPath, "SimCity 4 Launcher.exe");
+            string installerScriptPath = Path.Combine(updateDirectory, "Install-Update.ps1");
+            File.WriteAllText(installerScriptPath, InstallerScript, new UTF8Encoding(true));
+            return new LauncherUpdatePackage
+            {
+                UpdateDirectory = updateDirectory,
+                PackageDirectory = packageDirectory,
+                InstallerScriptPath = installerScriptPath,
+                InstallDirectory = Application.StartupPath,
+                ExecutablePath = executablePath
+            };
+        }
+        catch
+        {
+            TryDeleteDirectory(updateDirectory);
+            throw;
+        }
+    }
+
+    public static void StartInstaller(LauncherUpdatePackage package, int processId)
+    {
+        if (package == null || !File.Exists(package.InstallerScriptPath))
+        {
+            throw new InvalidOperationException("No se pudo preparar el instalador de la actualización.");
+        }
+
+        string powershellPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.System),
+            "WindowsPowerShell\\v1.0\\powershell.exe");
+        ProcessStartInfo startInfo = new ProcessStartInfo();
+        startInfo.FileName = powershellPath;
+        startInfo.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File " +
+            QuoteArgument(package.InstallerScriptPath) +
+            " -ProcessId " + processId +
+            " -SourceDirectory " + QuoteArgument(package.PackageDirectory) +
+            " -InstallDirectory " + QuoteArgument(package.InstallDirectory) +
+            " -ExecutablePath " + QuoteArgument(package.ExecutablePath) +
+            " -UpdateDirectory " + QuoteArgument(package.UpdateDirectory);
+        startInfo.UseShellExecute = false;
+        startInfo.CreateNoWindow = true;
+        Process installer = Process.Start(startInfo);
+        if (installer == null)
+        {
+            throw new InvalidOperationException("No se pudo iniciar el instalador de la actualización.");
+        }
+
+        installer.Dispose();
+    }
+
+    public static void DiscardPackage(LauncherUpdatePackage package)
+    {
+        if (package != null)
+        {
+            TryDeleteDirectory(package.UpdateDirectory);
+        }
+    }
+
+    private static bool TryParseBetaVersion(string tagName, out Version version)
+    {
+        version = null;
+        Match match = BetaTag.Match(tagName ?? string.Empty);
+        if (!match.Success)
+        {
+            return false;
+        }
+
+        int major;
+        int minor;
+        int patch;
+        int build;
+        if (!int.TryParse(match.Groups["major"].Value, out major) ||
+            !int.TryParse(match.Groups["minor"].Value, out minor) ||
+            !int.TryParse(match.Groups["patch"].Value, out patch) ||
+            !int.TryParse(match.Groups["build"].Value, out build))
+        {
+            return false;
+        }
+
+        try
+        {
+            version = new Version(major, minor, patch, build);
+            return true;
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return false;
+        }
+    }
+
+    private static string GetExpectedSha256(LauncherUpdate update)
+    {
+        string digest = update.Digest ?? string.Empty;
+        if (digest.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase))
+        {
+            digest = digest.Substring("sha256:".Length);
+        }
+
+        Match digestMatch = Sha256Pattern.Match(digest);
+        if (digestMatch.Success)
+        {
+            return digestMatch.Value;
+        }
+
+        if (!IsTrustedDownloadUrl(update.ChecksumUrl))
+        {
+            throw new InvalidDataException("La release no incluye una suma SHA-256 verificable.");
+        }
+
+        using (UpdateWebClient client = CreateWebClient())
+        {
+            string checksum = client.DownloadString(update.ChecksumUrl);
+            Match checksumMatch = Sha256Pattern.Match(checksum);
+            if (!checksumMatch.Success)
+            {
+                throw new InvalidDataException("El archivo de suma SHA-256 no es válido.");
+            }
+
+            return checksumMatch.Value;
+        }
+    }
+
+    private static void ExtractValidatedArchive(string archivePath, string destinationDirectory)
+    {
+        HashSet<string> allowedRoots = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "SimCity 4 Launcher.exe",
+            "README.md",
+            "Fonts",
+            "Icons",
+            "Images",
+            "Libraries"
+        };
+        string root = Path.GetFullPath(destinationDirectory).TrimEnd(Path.DirectorySeparatorChar) +
+            Path.DirectorySeparatorChar;
+        long expandedSize = 0;
+        int entryCount = 0;
+        using (FileStream archiveStream = File.OpenRead(archivePath))
+        using (ZipArchive archive = new ZipArchive(archiveStream, ZipArchiveMode.Read))
+        {
+            foreach (ZipArchiveEntry entry in archive.Entries)
+            {
+                entryCount++;
+                if (entryCount > 1000 || entry.Length > MaximumExpandedSize - expandedSize)
+                {
+                    throw new InvalidDataException("El contenido del paquete supera los límites permitidos.");
+                }
+
+                expandedSize += entry.Length;
+                string relativePath = entry.FullName.Replace('\\', '/');
+                bool directoryEntry = relativePath.EndsWith("/", StringComparison.Ordinal);
+                string[] segments = relativePath.TrimEnd('/').Split('/');
+                if (segments.Length == 0 || Path.IsPathRooted(relativePath))
+                {
+                    throw new InvalidDataException("El paquete contiene una ruta no permitida.");
+                }
+
+                foreach (string segment in segments)
+                {
+                    if (string.IsNullOrEmpty(segment) || segment == "." || segment == ".." || segment.IndexOf(':') >= 0)
+                    {
+                        throw new InvalidDataException("El paquete contiene una ruta no permitida.");
+                    }
+                }
+
+                if (!allowedRoots.Contains(segments[0]))
+                {
+                    throw new InvalidDataException("El paquete contiene archivos ajenos al launcher.");
+                }
+
+                int unixFileType = (entry.ExternalAttributes >> 16) & 0xF000;
+                if (unixFileType == 0xA000)
+                {
+                    throw new InvalidDataException("El paquete contiene un enlace simbólico no permitido.");
+                }
+
+                string targetPath = Path.GetFullPath(Path.Combine(
+                    destinationDirectory,
+                    relativePath.Replace('/', Path.DirectorySeparatorChar)));
+                if (!targetPath.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidDataException("El paquete intenta escribir fuera de la carpeta temporal.");
+                }
+
+                if (directoryEntry)
+                {
+                    Directory.CreateDirectory(targetPath);
+                    continue;
+                }
+
+                Directory.CreateDirectory(Path.GetDirectoryName(targetPath));
+                using (Stream input = entry.Open())
+                using (FileStream output = new FileStream(targetPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                {
+                    input.CopyTo(output);
+                }
+            }
+        }
+    }
+
+    private static bool IsTrustedDownloadUrl(string url)
+    {
+        Uri uri;
+        return Uri.TryCreate(url, UriKind.Absolute, out uri) &&
+            string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(uri.Host, "github.com", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static object ReadValue(IDictionary<string, object> values, string key)
+    {
+        object value;
+        return values.TryGetValue(key, out value) ? value : null;
+    }
+
+    private static string ReadString(IDictionary<string, object> values, string key)
+    {
+        object value = ReadValue(values, key);
+        return value == null ? string.Empty : Convert.ToString(value);
+    }
+
+    private static bool ReadBoolean(IDictionary<string, object> values, string key)
+    {
+        object value = ReadValue(values, key);
+        return value != null && Convert.ToBoolean(value);
+    }
+
+    private static string GetCheckTimestampPath()
+    {
+        string localApplicationData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        return string.IsNullOrEmpty(localApplicationData)
+            ? null
+            : Path.Combine(localApplicationData, "SimCity 4 Launcher", "last-update-check.txt");
+    }
+
+    private static UpdateWebClient CreateWebClient()
+    {
+        ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
+        UpdateWebClient client = new UpdateWebClient();
+        client.Headers[HttpRequestHeader.UserAgent] = "SimCity-4-Launcher";
+        client.Headers[HttpRequestHeader.Accept] = "application/vnd.github+json";
+        return client;
+    }
+
+    private static string QuoteArgument(string value)
+    {
+        return "\"" + (value ?? string.Empty).Replace("\"", "\\\"") + "\"";
+    }
+
+    private static void TryDeleteDirectory(string path)
+    {
+        try
+        {
+            if (!string.IsNullOrEmpty(path) && Directory.Exists(path))
+            {
+                Directory.Delete(path, true);
+            }
+        }
+        catch
+        {
+        }
+    }
+
+    private sealed class UpdateWebClient : WebClient
+    {
+        protected override WebRequest GetWebRequest(Uri address)
+        {
+            WebRequest request = base.GetWebRequest(address);
+            request.Timeout = 30000;
+            HttpWebRequest httpRequest = request as HttpWebRequest;
+            if (httpRequest != null)
+            {
+                httpRequest.ReadWriteTimeout = 30000;
+            }
+
+            return request;
+        }
     }
 }
 
@@ -215,12 +782,19 @@ internal static class Program
 
     private static int VerifyConfigurations(List<LauncherConfiguration> configurations)
     {
+        if (!LauncherUpdater.VersionComparisonRulesAreValid)
+        {
+            return 14;
+        }
+
         try
         {
             using (LauncherForm emptyProfileForm = new LauncherForm(
                 new List<LauncherConfiguration>(),
                 false))
             {
+                emptyProfileForm.Show();
+                Application.DoEvents();
                 if (!emptyProfileForm.EmptyProfileStateIsValid)
                 {
                     return 12;
@@ -846,6 +1420,11 @@ internal sealed class LauncherForm : Form
         UpdateProfileScrollBar();
         if (rememberLastProfile)
         {
+            Shown += OnLauncherShown;
+        }
+
+        if (rememberLastProfile)
+        {
             WindowState = FormWindowState.Maximized;
         }
     }
@@ -862,10 +1441,38 @@ internal sealed class LauncherForm : Form
             return configurations.Count == 0 &&
                 configurationList.Items.Count == 0 &&
                 configurationList.SelectedIndex == -1 &&
+                ProfileScrollBarVisibilityIsCorrect &&
                 addProfileButton.Enabled &&
                 !launchButton.Enabled &&
                 !editProfileMenuItem.Enabled &&
                 !deleteProfileMenuItem.Enabled;
+        }
+    }
+
+    public bool ProfileScrollBarVisibilityIsCorrect
+    {
+        get
+        {
+            int visibleItems = Math.Max(1, configurationList.ClientSize.Height / configurationList.ItemHeight);
+            bool shouldBeVisible = ShouldShowProfileScrollBar(configurationList.Items.Count, visibleItems);
+            return profileScrollBar.Visible == shouldBeVisible &&
+                profileScrollBar.Enabled == shouldBeVisible;
+        }
+    }
+
+    public bool SidebarLogoLayoutIsValid
+    {
+        get
+        {
+            Control sidebar = configurationList.Parent;
+            PictureBox logo = sidebar.Controls["GameIcon"] as PictureBox;
+            return logo != null &&
+                logo.Left == 0 &&
+                logo.Width == sidebar.ClientSize.Width &&
+                logo.Height == logo.Width &&
+                logo.SizeMode == PictureBoxSizeMode.Zoom &&
+                addProfileButton.Top > logo.Bottom &&
+                configurationList.Top > addProfileButton.Bottom;
         }
     }
 
@@ -942,6 +1549,8 @@ internal sealed class LauncherForm : Form
             return ReferenceEquals(profileActionsMenu.Renderer, profileActionsRenderer) &&
                 profileActionsMenu.ShowImageMargin &&
                 profileActionsMenu.ImageScalingSize == new Size(16, 16) &&
+                ProfileScrollBarVisibilityIsCorrect &&
+                SidebarLogoLayoutIsValid &&
                 configurationList.Right <= profileScrollBar.Left &&
                 editProfileMenuItem.ImageAlign == ContentAlignment.MiddleCenter &&
                 deleteProfileMenuItem.ImageAlign == ContentAlignment.MiddleCenter &&
@@ -1172,7 +1781,7 @@ internal sealed class LauncherForm : Form
         PictureBox logo = new PictureBox();
         logo.Name = "GameIcon";
         logo.Location = new Point(0, 14);
-        logo.Size = new Size(292, 100);
+        logo.Size = new Size(292, 292);
         logo.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
         logo.SizeMode = PictureBoxSizeMode.Zoom;
         logo.BackColor = SidebarColor;
@@ -1188,7 +1797,7 @@ internal sealed class LauncherForm : Form
 
         ListBox list = new ListBox();
         list.Name = "ProfileList";
-        list.Location = new Point(16, 220);
+        list.Location = new Point(16, 366);
         list.Size = new Size(244, 340);
         list.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
         list.BackColor = SidebarColor;
@@ -1213,7 +1822,7 @@ internal sealed class LauncherForm : Form
         Button add = CreateButton("Nuevo perfil", true);
         add.Name = "AddProfileButton";
         BootstrapIcons.SetButtonIcon(add, "plus-lg", MainTextColor, 18);
-        add.Location = new Point(16, 174);
+        add.Location = new Point(16, 320);
         add.Size = new Size(260, AddProfileButtonHeight);
         add.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
         add.Font = new Font("Trebuchet MS", 13F, FontStyle.Bold);
@@ -1224,8 +1833,10 @@ internal sealed class LauncherForm : Form
 
         sidebar.Resize += delegate
         {
-            logo.Width = sidebar.ClientSize.Width;
+            logo.SetBounds(0, 14, sidebar.ClientSize.Width, sidebar.ClientSize.Width);
+            add.Top = logo.Bottom + 14;
             add.Width = Math.Max(0, sidebar.ClientSize.Width - add.Left - 16);
+            list.Top = add.Bottom + 4;
             list.Width = Math.Max(100, sidebar.ClientSize.Width - list.Left - 32);
             scrollBar.Left = list.Right;
             scrollBar.Top = list.Top;
@@ -1536,6 +2147,143 @@ internal sealed class LauncherForm : Form
         }
     }
 
+    private void OnLauncherShown(object sender, EventArgs e)
+    {
+        if (!LauncherUpdater.ShouldCheckForUpdates)
+        {
+            return;
+        }
+
+        ThreadPool.QueueUserWorkItem(delegate
+        {
+            LauncherUpdate update;
+            try
+            {
+                update = LauncherUpdater.FindLatestRelease();
+            }
+            catch
+            {
+                return;
+            }
+
+            try
+            {
+                LauncherUpdater.RecordUpdateCheck();
+            }
+            catch
+            {
+            }
+
+            if (update == null || update.Version.CompareTo(LauncherUpdater.CurrentVersion) <= 0 ||
+                IsDisposed || !IsHandleCreated)
+            {
+                return;
+            }
+
+            try
+            {
+                BeginInvoke(new MethodInvoker(delegate
+                {
+                    if (IsDisposed || update.Version.CompareTo(LauncherUpdater.CurrentVersion) <= 0)
+                    {
+                        return;
+                    }
+
+                    string message = "Hay una nueva versión beta disponible: " +
+                        LauncherUpdater.FormatVersion(update.Version) + ".\r\n\r\n" +
+                        "¿Quieres descargarla e instalarla ahora? El launcher se cerrará y se abrirá de nuevo; " +
+                        "tus perfiles y fondos se conservarán.";
+                    if (MessageBox.Show(
+                        this,
+                        message,
+                        "Actualización disponible",
+                        MessageBoxButtons.YesNo,
+                        MessageBoxIcon.Information,
+                        MessageBoxDefaultButton.Button2) == DialogResult.Yes)
+                    {
+                        StartUpdateDownload(update);
+                    }
+                }));
+            }
+            catch
+            {
+            }
+        });
+    }
+
+    private void StartUpdateDownload(LauncherUpdate update)
+    {
+        Enabled = false;
+        UseWaitCursor = true;
+        ThreadPool.QueueUserWorkItem(delegate
+        {
+            LauncherUpdatePackage package;
+            try
+            {
+                package = LauncherUpdater.DownloadAndPrepare(update);
+            }
+            catch (Exception exception)
+            {
+                try
+                {
+                    BeginInvoke(new MethodInvoker(delegate
+                    {
+                        if (IsDisposed)
+                        {
+                            return;
+                        }
+
+                        Enabled = true;
+                        UseWaitCursor = false;
+                        MessageBox.Show(
+                            this,
+                            "No se pudo descargar la actualización:\r\n" + exception.Message,
+                            "SimCity 4 Launcher",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Error);
+                    }));
+                }
+                catch
+                {
+                }
+
+                return;
+            }
+
+            try
+            {
+                BeginInvoke(new MethodInvoker(delegate
+                {
+                    try
+                    {
+                        using (Process currentProcess = Process.GetCurrentProcess())
+                        {
+                            LauncherUpdater.StartInstaller(package, currentProcess.Id);
+                        }
+
+                        Close();
+                    }
+                    catch (Exception exception)
+                    {
+                        LauncherUpdater.DiscardPackage(package);
+                        Enabled = true;
+                        UseWaitCursor = false;
+                        MessageBox.Show(
+                            this,
+                            "No se pudo iniciar la instalación:\r\n" + exception.Message,
+                            "SimCity 4 Launcher",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Error);
+                    }
+                }));
+            }
+            catch
+            {
+                LauncherUpdater.DiscardPackage(package);
+            }
+        });
+    }
+
     private void UpdateProfileScrollBar()
     {
         if (configurationList == null || profileScrollBar == null)
@@ -1550,7 +2298,9 @@ internal sealed class LauncherForm : Form
         profileScrollBar.LargeChange = largeChange;
         profileScrollBar.SmallChange = 1;
         profileScrollBar.Maximum = Math.Max(0, itemCount - 1);
-        profileScrollBar.Enabled = itemCount > visibleItems;
+        bool shouldShow = ShouldShowProfileScrollBar(itemCount, visibleItems);
+        profileScrollBar.Visible = shouldShow;
+        profileScrollBar.Enabled = shouldShow;
 
         int maximumTopIndex = Math.Max(0, itemCount - visibleItems);
         int value = Math.Max(0, Math.Min(configurationList.TopIndex, maximumTopIndex));
@@ -1558,6 +2308,11 @@ internal sealed class LauncherForm : Form
         {
             profileScrollBar.Value = value;
         }
+    }
+
+    private static bool ShouldShowProfileScrollBar(int itemCount, int visibleItems)
+    {
+        return itemCount > visibleItems;
     }
 
     private void OnAddProfileClicked(object sender, EventArgs e)
